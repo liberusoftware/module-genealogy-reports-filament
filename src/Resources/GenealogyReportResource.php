@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Liberu\Genealogy\Reports\Filament\Resources;
 
+use Filament\Actions\Action;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\Select;
@@ -13,6 +14,9 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Model;
+use Liberu\Genealogy\Reports\Actions\DeleteGenealogyReport;
+use Liberu\Genealogy\Reports\Actions\GenerateGenealogyReport;
 use Liberu\Genealogy\Reports\Filament\Resources\GenealogyReportResource\Pages\CreateGenealogyReport;
 use Liberu\Genealogy\Reports\Filament\Resources\GenealogyReportResource\Pages\EditGenealogyReport;
 use Liberu\Genealogy\Reports\Filament\Resources\GenealogyReportResource\Pages\ListGenealogyReports;
@@ -24,17 +28,14 @@ final class GenealogyReportResource extends Resource
 
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-rectangle-stack';
 
-    protected static string|\UnitEnum|null $navigationGroup = 'Genealogy';
+    protected static string|\UnitEnum|null $navigationGroup = 'Research & Evidence';
 
     public static function form(Schema $schema): Schema
     {
         return $schema->components([
             TextInput::make('name')->required()->maxLength(255),
-            Select::make('status')->options([
-                'draft' => 'Draft',
-                'active' => 'Active',
-                'completed' => 'Completed',
-            ])->required(),
+            Select::make('type')->options(array_combine(GenealogyReport::TYPES, array_map(static fn (string $type): string => ucwords(str_replace('_', ' ', $type)), GenealogyReport::TYPES)))->required(),
+            Select::make('status')->options(array_combine(GenealogyReport::STATUSES, array_map(static fn (string $status): string => ucfirst($status), GenealogyReport::STATUSES)))->required(),
         ]);
     }
 
@@ -45,8 +46,20 @@ final class GenealogyReportResource extends Resource
             TextColumn::make('status')->badge()->sortable(),
             TextColumn::make('created_at')->dateTime()->sortable(),
         ])->recordActions([
+            Action::make('generate')
+                ->form([
+                    Select::make('format')->options([
+                        'json' => 'JSON',
+                        'csv' => 'CSV',
+                        'gedcom' => 'GEDCOM',
+                        'svg' => 'SVG',
+                    ])->default('json')->required(),
+                    TextInput::make('root_person_id')->label('Root person ID')->uuid(),
+                ])
+                ->requiresConfirmation()
+                ->action(fn (GenealogyReport $record, array $data): GenealogyReport => app(GenerateGenealogyReport::class)->execute($record, array_filter($data))),
             EditAction::make(),
-            DeleteAction::make(),
+            DeleteAction::make()->action(fn (Model $record): mixed => app(DeleteGenealogyReport::class)->execute($record)),
         ]);
     }
 
